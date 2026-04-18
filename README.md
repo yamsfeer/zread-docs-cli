@@ -17,7 +17,7 @@ npm install -g zread-docs-cli
 ### From source
 
 ```bash
-git clone https://github.com/your-username/zread-docs-cli.git
+git clone https://github.com/yamsfeer/zread-docs-cli.git
 cd zread-docs-cli
 npm install
 npm run build
