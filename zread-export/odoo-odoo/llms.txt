@@ -1,0 +1,49 @@
+# odoo/odoo
+
+Source: https://zread.ai/odoo/odoo
+
+## Get Started
+
+- [Get Started/Overview](1-overview.md)
+- [Get Started/Quick Start](2-quick-start.md)
+- [Get Started/Project Structure and Layout](3-project-structure-and-layout.md)
+- [Get Started/CLI Commands Reference](4-cli-commands-reference.md)
+
+## Buzz
+
+- [Buzz/Latest Updates and Version History](5-latest-updates-and-version-history.md)
+- [Buzz/Odoo vs SAP and Competitors](6-odoo-vs-sap-and-competitors.md)
+- [Buzz/Community and Ecosystem](7-community-and-ecosystem.md)
+
+## Deep Dive
+
+- [Deep Dive/Architecture Overview](8-architecture-overview.md)
+- [Deep Dive/Security and Access Control](23-security-and-access-control.md)
+- [Deep Dive/Data Import and Export](24-data-import-and-export.md)
+- [Deep Dive/Upgrade and Migration Framework](25-upgrade-and-migration-framework.md)
+### ORM Layer
+
+- [Deep Dive/ORM Layer/BaseModel and Model Hierarchy](9-basemodel-and-model-hierarchy.md)
+- [Deep Dive/ORM Layer/Field Types and Definitions](10-field-types-and-definitions.md)
+- [Deep Dive/ORM Layer/Recordset Operations](11-recordset-operations.md)
+- [Deep Dive/ORM Layer/Search Domains and Query Engine](12-search-domains-and-query-engine.md)
+
+### HTTP and Routing
+
+- [Deep Dive/HTTP and Routing/WSGI Application and Request Lifecycle](13-wsgi-application-and-request-lifecycle.md)
+- [Deep Dive/HTTP and Routing/Controller and Route System](14-controller-and-route-system.md)
+- [Deep Dive/HTTP and Routing/Session Management and CSRF](15-session-management-and-csrf.md)
+- [Deep Dive/HTTP and Routing/JSON-RPC and HTTP Dispatchers](16-json-rpc-and-http-dispatchers.md)
+
+### Module System
+
+- [Deep Dive/Module System/Module Loading and Registry](17-module-loading-and-registry.md)
+- [Deep Dive/Module System/Module Scaffolding](18-module-scaffolding.md)
+- [Deep Dive/Module System/Inheritance and Extension Patterns](19-inheritance-and-extension-patterns.md)
+
+### Server and Deployment
+
+- [Deep Dive/Server and Deployment/Server Modes and Workers](20-server-modes-and-workers.md)
+- [Deep Dive/Server and Deployment/Prefork and Gevent Architecture](21-prefork-and-gevent-architecture.md)
+- [Deep Dive/Server and Deployment/Configuration and Tools](22-configuration-and-tools.md)
+
