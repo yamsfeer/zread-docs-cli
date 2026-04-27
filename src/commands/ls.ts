@@ -2,13 +2,9 @@
  * `ls` command — show the documentation outline (table of contents).
  *
  * How it works:
- * 1. Fetches the HTML page at https://zread.ai/{owner}/{repo}
- * 2. Extracts an embedded JSON payload from a <script> tag
- * 3. Parses the wiki.pages array into a tree structure
- *
- * The zread.ai Next.js app renders wiki data server-side and embeds it
- * in the HTML for hydration. We piggyback on that data instead of
- * calling a dedicated JSON API endpoint.
+ * 1. Fetches repo info via GET /api/v1/repo/github/{owner}/{name} to get wiki_id
+ * 2. Fetches wiki outline via GET /api/v1/wiki/{wikiId}
+ * 3. Parses the pages array into a tree structure
  */
 
 import { fetchRepoOutline, parseRepoUrl } from "../api.js";
@@ -23,7 +19,7 @@ export async function lsCommand(repoOrUrl: string, options: LsOptions = {}): Pro
   const lang = resolveLang(options.lang);
   const parsed = parseRepoUrl(repoOrUrl);
 
-  const pages = await withSpinner(
+  const { pages } = await withSpinner(
     `Fetching outline for ${parsed.repoPath}...`,
     () => fetchRepoOutline(parsed.owner, parsed.repo, lang)
   );

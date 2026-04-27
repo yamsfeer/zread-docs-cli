@@ -5,6 +5,10 @@
  * metadata, and outlines. All endpoints return JSON in the shape:
  *   { code: number, data: any, msg?: string }
  * code === 0 means success.
+ *
+ * Wiki endpoints:
+ *   GET /api/v1/wiki/:wikiId             → { info, pages[] }
+ *   GET /api/v1/wiki/:wikiId/page/:slug  → { level, content }
  */
 
 // ==============================================================================
@@ -265,52 +269,54 @@ export async function fetchRepoFiles(
 /**
  * Fetch the documentation outline (page list) for a repository.
  *
- * This does NOT use a JSON API endpoint. Instead, it fetches the HTML page
- * and extracts an embedded JSON payload that contains wiki metadata.
- *
- * Endpoint: GET https://zread.ai/{owner}/{repo}  (returns HTML)
+ * Uses the official wiki API: GET /api/v1/wiki/:wikiId
+ * Requires a wiki_id, obtained via fetchRepoInfo().
  */
 export async function fetchRepoOutline(
   owner: string,
   repo: string,
   lang = "zh"
-): Promise<OutlinePage[]> {
-  const url = `${BASE_URL}/${owner}/${repo}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        ...DEFAULT_HEADERS,
-        "RSC": "1",
-        "X-Locale": lang,
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const text = await response.text();
-    return parseOutlineFromRsc(text);
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
+): Promise<{ pages: OutlinePage[]; wikiId: string }> {
+  const repoInfo = await fetchRepoInfo(owner, repo);
+  if (!repoInfo) {
+    throw new Error(`Repository not found: ${owner}/${repo}`);
   }
+
+  const url = `${BASE_URL}/api/v1/wiki/${repoInfo.wiki_id}`;
+  const res = await httpGet<{ info: unknown; pages: Array<Record<string, unknown>> }>(url, {
+    headers: { "x-locale": lang },
+  });
+  if (res.code !== 0) {
+    throw new Error(res.msg ?? "Failed to fetch wiki outline");
+  }
+
+  const pages: OutlinePage[] = [];
+  for (const page of res.data?.pages ?? []) {
+    const section = String(page.section ?? "");
+    const group = String(page.group ?? "");
+    const topic = String(page.topic ?? "");
+    const parts = [section, group, topic].filter((x) => x);
+    const title = parts.join("/");
+
+    pages.push({
+      page_id: String(page.page_id ?? ""),
+      slug: String(page.slug ?? ""),
+      title,
+      topic,
+      group,
+      section,
+      order: typeof page.order === "number" ? page.order : undefined,
+    });
+  }
+
+  return { pages, wikiId: repoInfo.wiki_id };
 }
 
 /**
  * Fetch a single documentation page as Markdown.
  *
- * This uses a special binary encoding in the response body.
- * The response contains an embedded length header followed by the
- * actual markdown content in UTF-8.
- *
- * Endpoint: GET https://zread.ai/{owner}/{repo}/{slug}
- * Headers: { RSC: "1" }
+ * Uses the official wiki API: GET /api/v1/wiki/:wikiId/page/:slug
+ * Returns the page content as a Markdown string.
  */
 export async function fetchMarkdownPage(
   owner: string,
@@ -318,31 +324,31 @@ export async function fetchMarkdownPage(
   slug: string,
   lang = "zh"
 ): Promise<string> {
-  const url = `${BASE_URL}/${owner}/${repo}/${slug}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        ...DEFAULT_HEADERS,
-        "RSC": "1",
-        "X-Locale": lang,
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const buffer = await response.arrayBuffer();
-    return parseMarkdownFromBuffer(buffer);
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
+  const repoInfo = await fetchRepoInfo(owner, repo);
+  if (!repoInfo) {
+    throw new Error(`Repository not found: ${owner}/${repo}`);
   }
+
+  return fetchMarkdownPageByWikiId(repoInfo.wiki_id, slug, lang);
+}
+
+/**
+ * Fetch a documentation page by wiki ID (avoids redundant fetchRepoInfo calls).
+ */
+export async function fetchMarkdownPageByWikiId(
+  wikiId: string,
+  slug: string,
+  lang = "zh"
+): Promise<string> {
+  const url = `${BASE_URL}/api/v1/wiki/${wikiId}/page/${slug}`;
+  const res = await httpGet<{ level: string; content: string }>(url, {
+    headers: { "x-locale": lang },
+  });
+  if (res.code !== 0) {
+    throw new Error(res.msg ?? `Failed to fetch page: ${slug}`);
+  }
+
+  return res.data?.content ?? "";
 }
 
 /**
@@ -365,157 +371,6 @@ export async function searchWiki(
     return res.data ?? [];
   } catch {
     return null;
-  }
-}
-
-// ==============================================================================
-// Response Parsers
-// ==============================================================================
-
-/**
- * Parse the wiki outline from the RSC (React Server Component) response.
- *
- * When requesting with the `RSC: 1` header, zread.ai returns a Next.js
- * RSC payload instead of HTML. The wiki data is embedded as a plain JSON
- * object `{"wiki":{"info":{...},"pages":[...]}}` within this payload.
- *
- * We locate the JSON object by finding `{"wiki":` and then use a
- * brace-matching algorithm to extract the complete object.
- */
-function parseOutlineFromRsc(text: string): OutlinePage[] {
-  // Find the start of the wiki JSON object
-  const wikiStart = text.indexOf('{"wiki"');
-  if (wikiStart === -1) {
-    throw new Error("Could not find wiki data in RSC response");
-  }
-
-  // Brace-matching to find the end of the JSON object
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let end = wikiStart;
-
-  for (let i = wikiStart; i < text.length; i++) {
-    const ch = text[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (ch === '"' && !escaped) {
-      inString = !inString;
-      continue;
-    }
-    if (!inString) {
-      if (ch === "{") depth++;
-      if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-  }
-
-  const jsonStr = text.slice(wikiStart, end);
-  const wikiObj = JSON.parse(jsonStr) as Record<string, unknown>;
-  const wiki = wikiObj.wiki as Record<string, unknown> | undefined;
-
-  if (!wiki || !Array.isArray(wiki.pages)) {
-    throw new Error("Wiki pages not found in parsed data");
-  }
-
-  const pages: OutlinePage[] = [];
-  for (const page of wiki.pages) {
-    if (!page || typeof page !== "object") continue;
-    const p = page as Record<string, unknown>;
-
-    const section = String(p.section ?? "");
-    const group = String(p.group ?? "");
-    const topic = String(p.topic ?? "");
-    const parts = [section, group, topic].filter((x) => x);
-    const title = parts.join("/");
-
-    pages.push({
-      page_id: String(p.page_id ?? ""),
-      slug: String(p.slug ?? ""),
-      title,
-      topic,
-      group,
-      section,
-      order: typeof p.order === "number" ? p.order : undefined,
-    });
-  }
-
-  return pages;
-}
-
-/**
- * Parse the Markdown content from the binary response buffer.
- *
- * The response uses a custom binary framing format:
- * 1. The last occurrence of `,---` marks the end of the length header
- * 2. Before that marker is a line like `81:T42bf,`
- * 3. The regex `^([0-9a-f]+):T([0-9a-f]+),` captures:
- *    - group(1): unknown hex id
- *    - group(2): content byte length in hex
- * 4. After the comma, the next `byte_length` bytes are the UTF-8 markdown
- */
-function parseMarkdownFromBuffer(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const marker = Buffer.from(",---");
-
-  // Find the last occurrence of ",---"
-  let endPos = -1;
-  for (let i = bytes.length - marker.length; i >= 0; i--) {
-    if (
-      bytes[i] === marker[0] &&
-      bytes[i + 1] === marker[1] &&
-      bytes[i + 2] === marker[2] &&
-      bytes[i + 3] === marker[3]
-    ) {
-      endPos = i;
-      break;
-    }
-  }
-
-  if (endPos === -1) {
-    throw new Error("Invalid response format: marker not found");
-  }
-
-  // Find the start of the line containing the marker
-  let lineStart = endPos;
-  while (lineStart > 0 && bytes[lineStart - 1] !== 0x0a) {
-    lineStart--;
-  }
-
-  // Extract the header line (e.g. "81:T42bf,")
-  const headerBytes = bytes.slice(lineStart, endPos + 1); // include the comma
-  const headerLine = Buffer.from(headerBytes).toString("latin1");
-
-  const headPattern = /^([0-9a-f]+):T([0-9a-f]+),/;
-  const match = headPattern.exec(headerLine);
-  if (!match) {
-    throw new Error(`Invalid header format: ${headerLine.slice(0, 50)}`);
-  }
-
-  const byteLength = parseInt(match[2], 16);
-  if (isNaN(byteLength) || byteLength <= 0) {
-    throw new Error(`Invalid byte length: ${match[2]}`);
-  }
-
-  // The content starts after the comma
-  const headerEnd = lineStart + match[0].length;
-  const contentBytes = bytes.slice(headerEnd, headerEnd + byteLength);
-
-  try {
-    return Buffer.from(contentBytes).toString("utf-8");
-  } catch {
-    throw new Error("Failed to decode content as UTF-8");
   }
 }
 

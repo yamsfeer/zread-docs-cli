@@ -2,14 +2,9 @@
  * `cat` command — read a documentation page as Markdown.
  *
  * How it works:
- * 1. Sends GET to https://zread.ai/{owner}/{repo}/{slug}
- * 2. Adds header `RSC: 1` to request the React Server Component payload
- * 3. The response body uses a custom binary framing format:
- *    - Ends with a marker `,---`
- *    - Before the marker is a header like `81:T42bf,`
- *    - The hex number after `T` is the content byte length
- *    - The actual markdown follows the comma, in UTF-8
- * 4. We extract and decode the markdown content
+ * 1. Fetches repo info via GET /api/v1/repo/github/{owner}/{name} to get wiki_id
+ * 2. Fetches page content via GET /api/v1/wiki/{wikiId}/page/{slug}
+ * 3. Returns data.content as Markdown
  */
 
 import { fetchMarkdownPage, parseRepoUrl } from "../api.js";

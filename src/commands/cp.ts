@@ -17,7 +17,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fetchRepoOutline, fetchMarkdownPage, parseRepoUrl, type OutlinePage } from "../api.js";
+import { fetchRepoOutline, fetchMarkdownPageByWikiId, parseRepoUrl, type OutlinePage } from "../api.js";
 import { resolveLang, withSpinner } from "../utils.js";
 
 export interface CpOptions {
@@ -52,7 +52,7 @@ export async function cpCommand(repoOrUrl: string, options: CpOptions = {}): Pro
   await fs.mkdir(repoDir, { recursive: true });
 
   // Fetch outline
-  const pages = await withSpinner(
+  const { pages, wikiId } = await withSpinner(
     `Fetching outline for ${parsed.repoPath}...`,
     () => fetchRepoOutline(parsed.owner, parsed.repo, lang)
   );
@@ -69,7 +69,7 @@ export async function cpCommand(repoOrUrl: string, options: CpOptions = {}): Pro
   // Simple semaphore using an async queue
   async function downloadPage(page: OutlinePage): Promise<PageResult> {
     try {
-      const content = await fetchMarkdownPage(parsed.owner, parsed.repo, page.slug, lang);
+      const content = await fetchMarkdownPageByWikiId(wikiId, page.slug, lang);
       // Write to file
       const filePath = path.join(repoDir, `${page.slug}.md`);
       await fs.writeFile(filePath, content, "utf-8");
